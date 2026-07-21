@@ -1,0 +1,149 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: soudacore-app
+    working_dir: /var/www
+    volumes:
+      - .:/var/www
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "ps aux | grep -q '[p]hp-fpm: master process' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+    networks:
+      - soudacore
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: soudacore-nginx
+    ports:
+      - "8000:80"
+    volumes:
+      - .:/var/www
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      app:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/up"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - soudacore
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: soudacore-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-soudacore}
+      POSTGRES_USER: ${DB_USERNAME:-soudacore}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set — see .env.example}
+    volumes:
+      - soudacore-pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-soudacore}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - soudacore
+
+  redis:
+    image: redis:7-alpine
+    container_name: soudacore-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - soudacore
+
+  queue:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: soudacore-queue
+    working_dir: /var/www
+    command: php artisan queue:work redis --tries=3 --backoff=5 --sleep=3 --max-time=3600
+    volumes:
+      - .:/var/www
+    env_file:
+      - .env
+    environment:
+      RUN_MIGRATIONS: "false"
+    depends_on:
+      app:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - soudacore
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    container_name: soudacore-scheduler
+    working_dir: /var/www
+    command: sh -c "while true; do php artisan schedule:run --verbose --no-interaction; sleep 60; done"
+    volumes:
+      - .:/var/www
+    env_file:
+      - .env
+    environment:
+      RUN_MIGRATIONS: "false"
+    depends_on:
+      app:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - soudacore
+
+  mailhog:
+    image: mailhog/mailhog
+    container_name: soudacore-mailhog
+    # Dev-only — `docker compose up` alone never starts this service;
+    # local development explicitly opts in with `--profile dev`. This
+    # is the real Compose mechanism for this ("swarm-only deploy.replicas:
+    # 0" doesn't work with plain `docker compose up` — a mistake this
+    # sprint caught and fixed in docker-compose.prod.yml before it
+    # shipped, in favor of this correct approach instead).
+    profiles: ["dev"]
+    ports:
+      - "8025:8025"
+    networks:
+      - soudacore
+
+networks:
+  soudacore:
+    driver: bridge
+
+volumes:
+  soudacore-pgdata:

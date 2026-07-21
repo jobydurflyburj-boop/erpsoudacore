@@ -1,0 +1,22 @@
+# Production Readiness — a real gap: no .dockerignore existed, meaning
+# every `docker build` sent .git history, .env (a real secret leak
+# risk baked into an image layer), storage/logs, and test/doc
+# directories into the build context for no reason.
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+storage/logs/*
+storage/framework/cache/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/app/backups/*
+tests
+docs
+node_modules
+docker-compose*.yml
+docker-compose.override.yml
+README.md
+*.md
+.github
