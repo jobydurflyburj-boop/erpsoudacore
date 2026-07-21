@@ -78,4 +78,4 @@ for real in any environment with internet access.
 
 ## License
 
-Proprietary — Souda Core IT Solution.
+Proprietary — Souda Core IT Solution.2026
