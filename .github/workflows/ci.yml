@@ -1,0 +1,133 @@
+name: CI
+
+# Production Readiness — this is the one piece of this project's CI/CD
+# story that CAN run for real, unlike almost everything else built in
+# this sandbox: GitHub Actions runners have real internet access, so
+# `composer install` (blocked in this development sandbox throughout
+# every prior sprint) actually works here, and this workflow really
+# does install dependencies and run the real PHPUnit test suite this
+# project has been writing and lint-checking (but never executing)
+# since the very first sprint. This has never actually been triggered
+# on a real GitHub repository from this sandbox — there is no git
+# remote configured here — but the YAML is syntactically real and the
+# steps are the real, standard sequence for a Laravel + PostgreSQL +
+# Redis project.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: soudacore_test
+          POSTGRES_USER: soudacore
+          POSTGRES_PASSWORD: secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U soudacore"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.3"
+          extensions: pdo, pdo_pgsql, pgsql, zip, intl, bcmath, redis, opcache
+          coverage: none
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-progress --no-interaction
+
+      - name: PHP lint (syntax check every file)
+        run: find app database routes config tests -name "*.php" -print0 | xargs -0 -n1 php -l
+
+      - name: Copy environment file
+        run: cp .env.example .env
+
+      - name: Generate application key
+        run: php artisan key:generate
+
+      - name: Configure test environment
+        run: |
+          echo "DB_CONNECTION=pgsql" >> .env
+          echo "DB_HOST=127.0.0.1" >> .env
+          echo "DB_PORT=5432" >> .env
+          echo "DB_DATABASE=soudacore_test" >> .env
+          echo "DB_USERNAME=soudacore" >> .env
+          echo "DB_PASSWORD=secret" >> .env
+          echo "REDIS_HOST=127.0.0.1" >> .env
+          echo "CACHE_STORE=array" >> .env
+          echo "SESSION_DRIVER=array" >> .env
+          echo "QUEUE_CONNECTION=sync" >> .env
+          echo "MAIL_MAILER=array" >> .env
+
+      - name: Run database migrations
+        run: php artisan migrate --force
+
+      - name: Run test suite
+        run: php artisan test --parallel
+
+      - name: Composer dependency audit
+        run: composer audit --no-dev || true
+        continue-on-error: true
+
+  deploy:
+    name: Deploy (main branch only)
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        # Real secrets, never hardcoded — DEPLOY_HOST/DEPLOY_USER/
+        # DEPLOY_SSH_KEY are configured as GitHub Environment secrets,
+        # not committed anywhere in this repo. See
+        # docs/DEPLOYMENT_GUIDE.md for what scripts/deploy.sh (invoked
+        # here) actually does on the target server.
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd /var/www/soudacore-api
+            bash scripts/deploy.sh

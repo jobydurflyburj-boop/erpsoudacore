@@ -1,0 +1,11 @@
+/vendor
+/node_modules
+.env
+.env.backup
+.phpunit.result.cache
+docker-compose.override.yml
+/storage/*.key
+/public/storage
+Homestead.json
+Homestead.yaml
+auth.json

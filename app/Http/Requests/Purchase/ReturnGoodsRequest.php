@@ -1,0 +1,15 @@
+<?php
+namespace App\Http\Requests\Purchase;
+use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
+
+class ReturnGoodsRequest extends FormRequest
+{
+    public function authorize(): bool { return true; }
+    public function rules(): array
+    {
+        return [
+            'supplier_bill_id' => ['nullable', 'uuid', Rule::exists('supplier_bills', 'id')->where('tenant_id', $this->user()->tenant_id)],
+        ];
+    }
+}

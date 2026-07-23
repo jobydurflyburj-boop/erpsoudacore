@@ -1,0 +1,55 @@
+version: "3.8"
+
+# Production Readiness — a real production override, not just the dev
+# compose file reused as-is. Applied with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# What changes and why:
+# - No `.:/var/www` volume mount on app/queue/scheduler — production
+#   runs the code baked into the image at build time (COPY . . in the
+#   Dockerfile), not a live host mount. This is what makes the
+#   Dockerfile's `opcache.validate_timestamps=0` setting safe: nothing
+#   can change the running code out from under opcache except a real
+#   image rebuild + redeploy (see scripts/deploy.sh).
+# - Postgres and Redis no longer publish ports to the host at all —
+#   only `nginx`/`app` need to reach them, and both already can via
+#   the internal `soudacore` Docker network; publishing 5432/6379 to
+#   the host is a real, unnecessary attack surface in production.
+# - `mailhog` never starts at all unless `--profile dev` is explicitly
+#   passed (see docker-compose.yml) — production always uses real
+#   MAIL_* credentials pointed at a real provider instead (.env.example).
+
+services:
+  app:
+    volumes: []
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+
+  queue:
+    volumes: []
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+
+  scheduler:
+    volumes: []
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+
+  nginx:
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+      # nginx's `root /var/www/public` (docker/nginx/default.conf) needs
+      # this directory to exist in ITS OWN filesystem for `try_files` to
+      # find `index.php` and hand off to PHP-FPM — read-only, and
+      # deliberately narrower than the dev compose file's full `.:/var/www`
+      # mount, since nginx never needs to read anything outside `public/`.
+      - ./public:/var/www/public:ro
+
+  postgres:
+    ports: []
+
+  redis:
+    ports: []
