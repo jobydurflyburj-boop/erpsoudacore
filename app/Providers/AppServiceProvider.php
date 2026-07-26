@@ -44,7 +44,11 @@ class AppServiceProvider extends ServiceProvider
         // can't exhaust a victim's attempts by spraying across many
         // source IPs, and one shared office IP with many real users
         // can't lock each other out.
-        RateLimiter::for('auth', function (Request $request) {
+                RateLimiter::for('api', function (Request $request) {
+                                return Limit::perMinute(60)->by($request->user()?->id ?: $request->ip());
+                });
+                                 
+                                 RateLimiter::for('auth', function (Request $request) {
             $identifier = (string) ($request->input('email') ?? $request->input('username') ?? $request->ip());
 
             return Limit::perMinute(10)->by($request->ip().'|'.$identifier);
