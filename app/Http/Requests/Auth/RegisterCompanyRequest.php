@@ -22,7 +22,7 @@ class RegisterCompanyRequest extends FormRequest
             'vat_number' => ['nullable', 'digits:15'],
             'admin_full_name' => ['required', 'string', 'max:255'],
             'admin_email' => ['required', 'email', 'max:255'],
-            'admin_password' => ['required', 'confirmed', app(PasswordPolicyService::class)->rule()],
+            'admin_password' => ['required', app(PasswordPolicyService::class)->rule()],
             'default_locale' => ['nullable', 'in:ar,en'],
         ];
     }
