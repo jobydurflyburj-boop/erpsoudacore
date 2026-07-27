@@ -43,6 +43,7 @@ class RegistrationService
 
         return DB::transaction(function () use ($data) {
             $tenant = Tenant::create([
+                'id' => (string) \Illuminate\Support\Str::uuid(),                    
                 'name' => $data['legal_name'],
                 'subdomain' => $data['subdomain'],
                 'status' => 'trial',
