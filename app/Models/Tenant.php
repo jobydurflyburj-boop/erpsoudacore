@@ -13,7 +13,7 @@ class Tenant extends Model
     use HasFactory, HasUuid, SoftDeletes;
 
     protected $fillable = [
-        'name', 'subdomain', 'status', 'subscription_plan_id',
+        'id', 'name', 'subdomain', 'status', 'subscription_plan_id',
         'default_locale', 'default_currency', 'timezone',
         'trial_ends_at', 'suspended_at', 'suspension_reason', 'suspended_by_user_id',
     ];
