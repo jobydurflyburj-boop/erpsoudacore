@@ -2,6 +2,8 @@
 
 namespace App\Models\Concerns;
 
+use Illuminate\Support\Str;
+
 trait HasUuid
 {
     public function initializeHasUuid(): void
@@ -10,11 +12,12 @@ trait HasUuid
         $this->incrementing = false;
     }
 
-    // Postgres generates the UUID via gen_random_uuid() column default
-    // (see migrations) — this trait just tells Eloquent not to expect an
-    // auto-increment integer key. We deliberately do NOT generate the
-    // UUID in PHP (e.g. via a `creating` event with Str::uuid()) so the
-    // database remains the single source of truth for the value even
-    // when a row is inserted outside the app (seeders, raw SQL, a future
-    // ETL job).
+    public static function bootHasUuid(): void
+    {
+        static::creating(function ($model) {
+            if (empty($model->{$model->getKeyName()})) {
+                $model->{$model->getKeyName()} = (string) Str::uuid();
+            }
+        });
+    }
 }
